@@ -6,3 +6,5 @@ security:
   seed:
     admin-password: admin-test-password
     user-password: user-test-password
+rag:
+  storage-dir: target/test-uploads
