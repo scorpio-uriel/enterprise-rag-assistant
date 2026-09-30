@@ -8,6 +8,14 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate # le schéma appartient à Flyway, Hibernate ne fait que vérifier
+  servlet:
+    multipart:
+      max-file-size: 20MB # au-delà : MaxUploadSizeExceededException, traduite en 400 (AC2.3)
+      max-request-size: 21MB
+
+server:
+  tomcat:
+    max-swallow-size: 25MB # laisse Tomcat lire la fin d'un envoi trop gros pour pouvoir répondre 400
 
 management:
   endpoints:
@@ -22,3 +30,7 @@ security:
   seed:
     admin-password: ${ADMIN_PASSWORD}
     user-password: ${USER_PASSWORD}
+
+rag:
+  storage-dir: ${STORAGE_DIR:./data/uploads}
+  max-file-size: 20MB
