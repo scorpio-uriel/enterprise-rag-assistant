@@ -8,3 +8,5 @@ security:
     user-password: user-test-password
 rag:
   storage-dir: target/test-uploads
+  chunk-size: 200 # petits chunks : plusieurs vecteurs même sur les fixtures
+  chunk-overlap: 20

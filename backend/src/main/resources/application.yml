@@ -12,6 +12,18 @@ spring:
     multipart:
       max-file-size: 20MB # au-delà : MaxUploadSizeExceededException, traduite en 400 (AC2.3)
       max-request-size: 21MB
+  ai:
+    ollama:
+      base-url: ${OLLAMA_URL:http://localhost:11434}
+      embedding:
+        options:
+          model: nomic-embed-text
+    vectorstore:
+      pgvector:
+        initialize-schema: false # la table vector_store appartient à Flyway (V3)
+        dimensions: 768 # nomic-embed-text
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
 
 server:
   tomcat:
@@ -34,3 +46,5 @@ security:
 rag:
   storage-dir: ${STORAGE_DIR:./data/uploads}
   max-file-size: 20MB
+  chunk-size: 800 # en tokens
+  chunk-overlap: 100 # tokens repris du chunk précédent

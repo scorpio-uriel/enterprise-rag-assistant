@@ -16,7 +16,7 @@ import org.springframework.util.unit.DataSize;
 class FileValidatorTest {
 
   private final FileValidator validator =
-      new FileValidator(new RagProperties("unused", DataSize.ofMegabytes(20)));
+      new FileValidator(new RagProperties("unused", DataSize.ofMegabytes(20), 800, 100));
 
   @ParameterizedTest
   @CsvSource({
@@ -82,7 +82,8 @@ class FileValidatorTest {
 
   @Test
   void rejectsFileOverMaxSize() { // AC2.3 (défense en profondeur)
-    FileValidator small = new FileValidator(new RagProperties("unused", DataSize.ofBytes(10)));
+    FileValidator small =
+        new FileValidator(new RagProperties("unused", DataSize.ofBytes(10), 800, 100));
     MockMultipartFile file =
         new MockMultipartFile("file", "gros.txt", null, "plus de dix octets".getBytes());
 

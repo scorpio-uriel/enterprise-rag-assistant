@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, TestAiConfig.class})
 @SpringBootTest
 @ActiveProfiles("test")
 @AutoConfigureMockMvc

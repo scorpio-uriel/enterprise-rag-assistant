@@ -78,6 +78,23 @@ public class Document {
     this.updatedAt = this.createdAt;
   }
 
+  public void markIndexed(int chunkCount) {
+    this.chunkCount = chunkCount;
+    this.errorMessage = null;
+    changeStatus(DocumentStatus.INDEXED);
+  }
+
+  public void markFailed(String errorMessage) {
+    this.chunkCount = 0;
+    this.errorMessage = errorMessage;
+    changeStatus(DocumentStatus.FAILED);
+  }
+
+  private void changeStatus(DocumentStatus status) {
+    this.status = status;
+    this.updatedAt = Instant.now();
+  }
+
   public UUID getId() {
     return id;
   }

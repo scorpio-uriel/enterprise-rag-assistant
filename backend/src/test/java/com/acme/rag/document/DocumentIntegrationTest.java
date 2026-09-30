@@ -2,12 +2,14 @@ package com.acme.rag.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.acme.rag.TestAiConfig;
 import com.acme.rag.TestcontainersConfiguration;
 import com.acme.rag.auth.Role;
 import com.acme.rag.auth.TokenService;
@@ -19,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -33,6 +36,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.event.ApplicationEvents;
@@ -45,9 +49,10 @@ import org.springframework.web.client.RestClient;
 /**
  * Parcours complets sur un vrai PostgreSQL (Testcontainers). {@code RANDOM_PORT} démarre aussi un
  * vrai Tomcat : indispensable pour AC2.3, car MockMvc ne passe pas par le parseur multipart qui
- * applique {@code max-file-size}.
+ * applique {@code max-file-size}. Chaque import déclenche une indexation asynchrone (avec le {@code
+ * FakeEmbeddingModel}) : on attend sa fin avant de nettoyer ou d'asserter un statut.
  */
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, TestAiConfig.class})
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 @RecordApplicationEvents
@@ -59,6 +64,7 @@ class DocumentIntegrationTest {
   @Autowired DocumentRepository documentRepository;
   @Autowired RagProperties ragProperties;
   @Autowired ApplicationEvents events;
+  @Autowired JdbcTemplate jdbc;
 
   @LocalServerPort int port;
 
@@ -67,14 +73,14 @@ class DocumentIntegrationTest {
 
   @BeforeEach
   void setUp() throws IOException {
-    documentRepository.deleteAll();
     storageDir = Path.of(ragProperties.storageDir()).toAbsolutePath();
-    try (Stream<Path> files = Files.list(storageDir)) {
-      for (Path file : files.toList()) {
-        Files.delete(file);
-      }
-    }
+    DocumentTestSupport.reset(documentRepository, jdbc, storageDir);
     adminToken = tokenService.issue("admin@acme.local", Role.ADMIN).token();
+  }
+
+  @AfterEach
+  void waitForBackgroundIndexing() {
+    DocumentTestSupport.awaitNoIndexing(documentRepository);
   }
 
   @Test
@@ -90,7 +96,7 @@ class DocumentIntegrationTest {
 
   @ParameterizedTest
   @ValueSource(strings = {"sample.pdf", "sample.docx", "sample.md", "sample.txt"})
-  void adminUploadsSupportedFormat(String fileName) throws Exception { // AC2.2
+  void adminUploadsSupportedFormat(String fileName) throws Exception { // AC2.2, puis indexation
     String body =
         mockMvc
             .perform(upload(fixture(fileName, fileName), adminToken))
@@ -103,10 +109,13 @@ class DocumentIntegrationTest {
 
     Document document = documentRepository.findById(id).orElseThrow();
     assertThat(document.getFileName()).isEqualTo(fileName);
-    assertThat(document.getStatus()).isEqualTo(DocumentStatus.PENDING);
     assertThat(Path.of(document.getStoragePath())).exists().startsWith(storageDir);
     assertThat(events.stream(DocumentUploadedEvent.class))
         .containsExactly(new DocumentUploadedEvent(id));
+
+    Document indexed = DocumentTestSupport.awaitIndexingEnd(documentRepository, id);
+    assertThat(indexed.getStatus()).isEqualTo(DocumentStatus.INDEXED); // chaque lecteur fonctionne
+    assertThat(indexed.getChunkCount()).isPositive();
   }
 
   @Test
@@ -174,16 +183,17 @@ class DocumentIntegrationTest {
     mockMvc
         .perform(upload(fixture("sample.md", "sample.md"), adminToken))
         .andExpect(status().isAccepted());
+    DocumentTestSupport.awaitNoIndexing(documentRepository);
 
     mockMvc
         .perform(get("/api/documents").header("Authorization", "Bearer " + adminToken))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.length()").value(2))
         .andExpect(jsonPath("$[0].fileName").value("sample.md"))
-        .andExpect(jsonPath("$[0].status").value("PENDING"))
+        .andExpect(jsonPath("$[0].status").value("INDEXED"))
         .andExpect(jsonPath("$[0].contentType").value(containsString("text/")))
         .andExpect(jsonPath("$[0].sizeBytes").isNumber())
-        .andExpect(jsonPath("$[0].chunkCount").value(0))
+        .andExpect(jsonPath("$[0].chunkCount").value(greaterThan(0)))
         .andExpect(jsonPath("$[1].fileName").value("sample.txt"));
   }
 
@@ -206,6 +216,7 @@ class DocumentIntegrationTest {
             .getContentAsString();
     UUID id = UUID.fromString(JsonPath.read(body, "$.id"));
     Path stored = Path.of(documentRepository.findById(id).orElseThrow().getStoragePath());
+    DocumentTestSupport.awaitIndexingEnd(documentRepository, id); // sinon 409 si INDEXING
 
     mockMvc
         .perform(delete("/api/documents/{id}", id).header("Authorization", "Bearer " + adminToken))
