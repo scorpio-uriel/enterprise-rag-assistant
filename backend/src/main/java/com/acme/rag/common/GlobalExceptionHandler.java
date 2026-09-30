@@ -1,5 +1,6 @@
 package com.acme.rag.common;
 
+import com.acme.rag.document.DocumentBeingIndexedException;
 import com.acme.rag.document.DuplicateDocumentException;
 import com.acme.rag.document.InvalidFileException;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -44,6 +45,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   @ExceptionHandler(DuplicateDocumentException.class)
   ProblemDetail handleDuplicate(DuplicateDocumentException ex) {
     return problem(HttpStatus.CONFLICT, "Document en double", ex.getMessage());
+  }
+
+  @ExceptionHandler(DocumentBeingIndexedException.class)
+  ProblemDetail handleBeingIndexed(DocumentBeingIndexedException ex) {
+    return problem(HttpStatus.CONFLICT, "Indexation en cours", ex.getMessage());
   }
 
   @ExceptionHandler(NotFoundException.class)

@@ -2,6 +2,7 @@ package com.acme.rag.document;
 
 import com.acme.rag.auth.UserRepository;
 import com.acme.rag.common.NotFoundException;
+import com.acme.rag.ingestion.IngestionService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -30,18 +31,21 @@ public class DocumentService {
   private final FileValidator fileValidator;
   private final FileStorage fileStorage;
   private final ApplicationEventPublisher eventPublisher;
+  private final IngestionService ingestionService;
 
   public DocumentService(
       DocumentRepository documentRepository,
       UserRepository userRepository,
       FileValidator fileValidator,
       FileStorage fileStorage,
-      ApplicationEventPublisher eventPublisher) {
+      ApplicationEventPublisher eventPublisher,
+      IngestionService ingestionService) {
     this.documentRepository = documentRepository;
     this.userRepository = userRepository;
     this.fileValidator = fileValidator;
     this.fileStorage = fileStorage;
     this.eventPublisher = eventPublisher;
+    this.ingestionService = ingestionService;
   }
 
   /**
@@ -91,14 +95,23 @@ public class DocumentService {
         .toList();
   }
 
-  @Transactional
+  /**
+   * Vecteurs, puis ligne, puis fichier (AC4.2). Refusé pendant l'indexation (409). Sans transaction
+   * englobante : la suppression conditionnelle de la ligne protège de la course avec un document
+   * {@code PENDING} dont l'indexation démarrerait entre la lecture et la suppression.
+   */
   public void delete(UUID id) {
     Document document =
         documentRepository
             .findById(id)
             .orElseThrow(() -> new NotFoundException("Document introuvable : " + id));
-    documentRepository.delete(document);
-    documentRepository.flush(); // la ligne doit partir avant le fichier
+    if (document.getStatus() == DocumentStatus.INDEXING) {
+      throw new DocumentBeingIndexedException();
+    }
+    ingestionService.deleteVectors(id);
+    if (documentRepository.deleteUnlessIndexing(id) == 0) {
+      throw new DocumentBeingIndexedException(); // l'indexation vient de démarrer
+    }
     fileStorage.delete(fileStorage.resolve(document.getStoragePath()));
   }
 
