@@ -19,7 +19,7 @@ Deux comptes de démo sont créés au démarrage : `admin@acme.local` et `user@a
 
 ## 3. Stack et architecture
 
-- **Backend :** Java 21, Spring Boot 3, Spring Security (JWT), Spring AI (`ChatClient`, advisor de RAG, `ChatMemory` JDBC), Spring Data JPA, Flyway
+- **Backend :** Java 21, Spring Boot 4.1, Spring Security (JWT), Spring AI 2.0 (`ChatClient`, `VectorStore`, recherche explicite avant génération), Spring Data JPA (historique des conversations en tables propres), Flyway. Justification détaillée dans [PLAN.md](./PLAN.md).
 - **Base de données :** PostgreSQL + pgvector (`PgVectorStore`, index HNSW, distance cosinus)
 - **LLM et embeddings :** Ollama en local, par exemple `llama3.1:8b` pour le chat et `nomic-embed-text` pour les embeddings
 - **Frontend :** React + TypeScript + Vite
