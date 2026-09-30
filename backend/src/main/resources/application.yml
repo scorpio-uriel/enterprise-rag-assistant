@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: rag
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/rag}
+    username: ${DB_USER:rag}
+    password: ${DB_PASSWORD:rag}
+  jpa:
+    hibernate:
+      ddl-auto: validate # le schéma appartient à Flyway, Hibernate ne fait que vérifier
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
