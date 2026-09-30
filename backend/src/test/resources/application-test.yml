@@ -1,0 +1,8 @@
+# Valeurs factices réservées aux tests (aucun secret réel)
+security:
+  jwt:
+    secret: test-secret-for-hs256-at-least-32-bytes-long
+    ttl: 1h
+  seed:
+    admin-password: admin-test-password
+    user-password: user-test-password

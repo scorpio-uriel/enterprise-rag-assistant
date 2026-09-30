@@ -14,3 +14,11 @@ management:
     web:
       exposure:
         include: health
+
+security:
+  jwt:
+    secret: ${JWT_SECRET} # >= 32 octets (HS256), jamais commité
+    ttl: ${JWT_TTL:1h}
+  seed:
+    admin-password: ${ADMIN_PASSWORD}
+    user-password: ${USER_PASSWORD}
