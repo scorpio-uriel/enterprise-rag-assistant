@@ -48,7 +48,20 @@ export function setUnauthorizedHandler(handler: () => void) {
   onUnauthorized = handler
 }
 
-async function toApiError(response: Response): Promise<ApiError> {
+/** Vide la session et prévient l'AuthProvider : un 401 vaut déconnexion (token expiré). */
+export function handleUnauthorized() {
+  sessionStore.clear()
+  onUnauthorized()
+}
+
+/** En-tête Authorization de la session courante (vide si non connecté). */
+export function authHeaders(): Record<string, string> {
+  const session = sessionStore.get()
+  return session ? { Authorization: `Bearer ${session.token}` } : {}
+}
+
+/** Traduit une réponse en erreur, avec le détail du ProblemDetail quand il y en a un. */
+export async function toApiError(response: Response): Promise<ApiError> {
   let detail = `Erreur ${response.status}`
   try {
     const problem = (await response.json()) as ProblemDetail
@@ -60,13 +73,12 @@ async function toApiError(response: Response): Promise<ApiError> {
 }
 
 /**
- * Seul point d'accès HTTP du front : ajoute le Bearer, traduit les erreurs ProblemDetail
- * et déconnecte sur 401.
+ * Point d'accès des appels REST (le flux SSE passe par chatStream.ts) : ajoute le Bearer,
+ * traduit les erreurs ProblemDetail et déconnecte sur 401.
  */
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  const session = sessionStore.get()
-  if (session) headers.set('Authorization', `Bearer ${session.token}`)
+  for (const [name, value] of Object.entries(authHeaders())) headers.set(name, value)
   // Avec FormData, le navigateur doit générer lui-même le Content-Type et sa boundary.
   if (init.body !== undefined && !(init.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
@@ -76,10 +88,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   if (!response.ok) {
     // Un 401 sur le login signifie « mauvais identifiants », pas « session expirée ».
-    if (response.status === 401 && path !== LOGIN_PATH) {
-      sessionStore.clear()
-      onUnauthorized()
-    }
+    if (response.status === 401 && path !== LOGIN_PATH) handleUnauthorized()
     throw await toApiError(response)
   }
   if (response.status === 204) return undefined as T

@@ -32,3 +32,44 @@ export interface ProblemDetail {
   detail?: string
   status?: number
 }
+
+export type MessageRole = 'USER' | 'ASSISTANT'
+
+/** Extrait cité à l'appui d'une réponse. page est null pour les formats sans pagination. */
+export interface SourceDto {
+  fileName: string
+  page: number | null
+  excerpt: string
+  score: number
+}
+
+export interface MessageDto {
+  role: MessageRole
+  content: string
+  sources: SourceDto[] | null
+  createdAt: string
+}
+
+export interface ConversationSummary {
+  id: string
+  title: string
+  updatedAt: string
+}
+
+export interface ConversationDetail {
+  id: string
+  title: string
+  messages: MessageDto[]
+}
+
+/** Corps de POST /api/chat : sans conversationId, le backend ouvre une nouvelle conversation. */
+export interface ChatRequest {
+  conversationId?: string
+  question: string
+}
+
+/** Données de l'événement SSE done, toujours le dernier d'un flux réussi. */
+export interface DoneEvent {
+  conversationId: string
+  messageId: string
+}
