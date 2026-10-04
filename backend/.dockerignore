@@ -1,0 +1,7 @@
+target/
+data/
+graphify-out/
+.mvn/wrapper/maven-wrapper.jar
+.idea/
+*.iml
+HELP.md
