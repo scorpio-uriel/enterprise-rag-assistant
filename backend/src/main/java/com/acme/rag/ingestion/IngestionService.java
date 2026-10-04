@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 public class IngestionService {
 
   static final String DOCUMENT_ID = "documentId";
-  static final String FILE_NAME = "fileName";
+  public static final String FILE_NAME = "fileName";
 
   private static final Logger log = LoggerFactory.getLogger(IngestionService.class);
   private static final int MAX_ERROR_LENGTH = 1000;

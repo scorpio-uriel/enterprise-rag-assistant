@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class DocumentReaderFactory {
 
-  static final String PAGE = "page";
+  public static final String PAGE = "page";
 
   private static final String PDF = "application/pdf";
   private static final String DOCX =
