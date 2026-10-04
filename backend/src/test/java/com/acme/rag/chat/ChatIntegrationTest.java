@@ -14,6 +14,7 @@ import com.acme.rag.chat.SseTestSupport.SseEvent;
 import com.acme.rag.chat.dto.ChatRequest;
 import com.acme.rag.chat.dto.TokenEvent;
 import com.acme.rag.common.RagProperties;
+import com.acme.rag.conversation.ConversationService;
 import com.acme.rag.document.DocumentRepository;
 import com.acme.rag.document.DocumentService;
 import com.acme.rag.document.DocumentStatus;
@@ -65,6 +66,7 @@ class ChatIntegrationTest {
 
   private static final String OUT_OF_CORPUS = "Quelle est la capitale du Pérou ?";
   private static final String IN_CORPUS = "Quels sont les horaires du support informatique ?";
+  static final String USER_EMAIL = "user@acme.local"; // compte seedé par DataSeeder
 
   @Autowired ChatService chatService;
   @Autowired ChatModel chatModel; // le mock @Primary de TestAiConfig
@@ -72,6 +74,7 @@ class ChatIntegrationTest {
   @Autowired VectorStore vectorStore;
   @Autowired RagPromptFactory promptFactory;
   @Autowired RagProperties ragProperties;
+  @Autowired ConversationService conversationService;
   @Autowired DocumentService documentService;
   @Autowired DocumentRepository documentRepository;
   @Autowired JdbcTemplate jdbc;
@@ -80,6 +83,7 @@ class ChatIntegrationTest {
 
   @BeforeEach
   void indexCorpus() throws IOException {
+    jdbc.update("DELETE FROM conversation"); // les messages suivent (ON DELETE CASCADE)
     DocumentTestSupport.reset(
         documentRepository, jdbc, Path.of(ragProperties.storageDir()).toAbsolutePath());
     UUID id = upload("sample.txt");
@@ -129,6 +133,7 @@ class ChatIntegrationTest {
         new ChatService(
             new RetrievalService(vectorStore, withThreshold(threshold)),
             promptFactory,
+            conversationService,
             chatClientBuilder);
 
     List<ServerSentEvent<?>> events = ask(service, IN_CORPUS);
@@ -178,7 +183,10 @@ class ChatIntegrationTest {
     return SseTestSupport.perform(
         mockMvc,
         post("/api/chat")
-            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+            .with(
+                jwt()
+                    .jwt(j -> j.subject(USER_EMAIL))
+                    .authorities(new SimpleGrantedAuthority("ROLE_USER")))
             .contentType(MediaType.APPLICATION_JSON)
             .accept(MediaType.TEXT_EVENT_STREAM)
             .content(objectMapper.writeValueAsString(new ChatRequest(null, question))));
@@ -191,7 +199,7 @@ class ChatIntegrationTest {
   }
 
   private static List<ServerSentEvent<?>> ask(ChatService service, String question) {
-    return service.ask(new ChatRequest(null, question)).collectList().block();
+    return service.ask(new ChatRequest(null, question), USER_EMAIL).collectList().block();
   }
 
   /** Concatène les fragments des événements {@code token}. */

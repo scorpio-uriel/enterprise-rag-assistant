@@ -62,7 +62,7 @@ class ChatControllerSecurityTest {
 
   @Test
   void userReceivesTheEventStream() throws Exception {
-    when(chatService.ask(any()))
+    when(chatService.ask(any(), any()))
         .thenReturn(
             Flux.just(
                 ChatEvents.token("Bon"),

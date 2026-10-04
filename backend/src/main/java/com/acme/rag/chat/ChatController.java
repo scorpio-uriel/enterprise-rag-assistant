@@ -4,6 +4,8 @@ import com.acme.rag.chat.dto.ChatRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,7 +26,8 @@ public class ChatController {
   }
 
   @PostMapping(value = "/api/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-  public Flux<ServerSentEvent<?>> chat(@Valid @RequestBody ChatRequest request) {
-    return chatService.ask(request);
+  public Flux<ServerSentEvent<?>> chat(
+      @Valid @RequestBody ChatRequest request, @AuthenticationPrincipal Jwt jwt) {
+    return chatService.ask(request, jwt.getSubject()); // le sujet du JWT est l'email
   }
 }
