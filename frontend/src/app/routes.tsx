@@ -3,7 +3,7 @@ import { AuthProvider } from '../features/auth/AuthContext'
 import { LoginPage } from '../features/auth/LoginPage'
 import { RequireAuth } from '../features/auth/RequireAuth'
 import { RequireRole } from '../features/auth/RequireRole'
-import { ChatPlaceholder } from '../features/chat/ChatPlaceholder'
+import { ChatPage } from '../features/chat/ChatPage'
 import { DocumentsPage } from '../features/documents/DocumentsPage'
 import { Layout } from './Layout'
 
@@ -26,7 +26,7 @@ export const routes: RouteObject[] = [
           {
             element: <Layout />,
             children: [
-              { path: '/chat', element: <ChatPlaceholder /> },
+              { path: '/chat/:id?', element: <ChatPage /> },
               {
                 element: <RequireRole role="ADMIN" />,
                 children: [{ path: '/documents', element: <DocumentsPage /> }],
