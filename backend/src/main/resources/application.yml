@@ -15,6 +15,10 @@ spring:
   ai:
     ollama:
       base-url: ${OLLAMA_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_CHAT_MODEL:llama3.1:8b}
+          temperature: 0.1 # réponses stables, peu « créatives »
       embedding:
         options:
           model: nomic-embed-text
@@ -48,3 +52,5 @@ rag:
   max-file-size: 20MB
   chunk-size: 800 # en tokens
   chunk-overlap: 100 # tokens repris du chunk précédent
+  top-k: 4 # nombre maximal d'extraits envoyés au LLM
+  similarity-threshold: 0.55 # en dessous : refus sans appel au LLM (à calibrer au jalon J11)

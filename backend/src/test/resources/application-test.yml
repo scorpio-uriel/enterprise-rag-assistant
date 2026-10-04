@@ -10,3 +10,5 @@ rag:
   storage-dir: target/test-uploads
   chunk-size: 200 # petits chunks : plusieurs vecteurs même sur les fixtures
   chunk-overlap: 20
+  top-k: 4
+  similarity-threshold: 0.3 # calibré pour le FakeEmbeddingModel, pas pour nomic-embed-text

@@ -39,6 +39,7 @@ class FileStorageTest {
   }
 
   private static FileStorage storageIn(Path dir) {
-    return new FileStorage(new RagProperties(dir.toString(), DataSize.ofMegabytes(20), 800, 100));
+    return new FileStorage(
+        new RagProperties(dir.toString(), DataSize.ofMegabytes(20), 800, 100, 4, 0.55));
   }
 }
