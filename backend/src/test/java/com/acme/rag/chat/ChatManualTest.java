@@ -3,7 +3,8 @@ package com.acme.rag.chat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.acme.rag.TestcontainersConfiguration;
-import com.acme.rag.chat.dto.ChatAnswer;
+import com.acme.rag.chat.dto.ChatRequest;
+import com.acme.rag.chat.dto.TokenEvent;
 import com.acme.rag.common.RagProperties;
 import com.acme.rag.document.DocumentRepository;
 import com.acme.rag.document.DocumentService;
@@ -11,12 +12,14 @@ import com.acme.rag.document.DocumentStatus;
 import com.acme.rag.document.DocumentTestSupport;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
@@ -53,10 +56,19 @@ class ChatManualTest {
     assertThat(DocumentTestSupport.awaitIndexingEnd(documentRepository, id).getStatus())
         .isEqualTo(DocumentStatus.INDEXED);
 
-    ChatAnswer answer = chatService.answer("Quels sont les horaires du support informatique ?");
+    List<ServerSentEvent<?>> events =
+        chatService
+            .ask(new ChatRequest(null, "Quels sont les horaires du support informatique ?"))
+            .collectList()
+            .block();
 
-    System.out.println("Réponse : " + answer.answer() + "\nSources : " + answer.sources());
-    assertThat(answer.answer()).isNotBlank().isNotEqualTo(RagPromptFactory.REFUSAL);
-    assertThat(answer.sources()).isNotEmpty();
+    StringBuilder answer = new StringBuilder();
+    events.stream()
+        .filter(e -> ChatEvents.TOKEN.equals(e.event()))
+        .forEach(e -> answer.append(((TokenEvent) e.data()).text()));
+    System.out.println("Réponse : " + answer + "\nÉvénements : " + events);
+    assertThat(answer.toString()).isNotBlank().isNotEqualTo(RagPromptFactory.REFUSAL);
+    assertThat(events).anyMatch(e -> ChatEvents.SOURCES.equals(e.event()));
+    assertThat(events).last().matches(e -> ChatEvents.DONE.equals(e.event()));
   }
 }

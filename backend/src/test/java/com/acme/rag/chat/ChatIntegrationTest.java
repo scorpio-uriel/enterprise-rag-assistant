@@ -5,10 +5,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import com.acme.rag.TestAiConfig;
 import com.acme.rag.TestcontainersConfiguration;
-import com.acme.rag.chat.dto.ChatAnswer;
+import com.acme.rag.chat.SseTestSupport.SseEvent;
+import com.acme.rag.chat.dto.ChatRequest;
+import com.acme.rag.chat.dto.TokenEvent;
 import com.acme.rag.common.RagProperties;
 import com.acme.rag.document.DocumentRepository;
 import com.acme.rag.document.DocumentService;
@@ -34,10 +38,19 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import reactor.core.publisher.Flux;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Recherche réelle dans pgvector ({@code FakeEmbeddingModel}) et LLM mocké. Le corpus est {@code
@@ -46,6 +59,7 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @Import({TestcontainersConfiguration.class, TestAiConfig.class})
 @SpringBootTest
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ChatIntegrationTest {
 
@@ -61,6 +75,8 @@ class ChatIntegrationTest {
   @Autowired DocumentService documentService;
   @Autowired DocumentRepository documentRepository;
   @Autowired JdbcTemplate jdbc;
+  @Autowired MockMvc mockMvc;
+  @Autowired JsonMapper objectMapper;
 
   @BeforeEach
   void indexCorpus() throws IOException {
@@ -78,33 +94,24 @@ class ChatIntegrationTest {
 
   @Test
   void outOfCorpusQuestionIsRefusedWithoutCallingTheModel() { // AC8.1
-    ChatAnswer answer = chatService.answer(OUT_OF_CORPUS);
+    List<ServerSentEvent<?>> events = ask(chatService, OUT_OF_CORPUS);
 
-    assertThat(answer.answer())
+    assertThat(answerText(events))
         .isEqualTo("Je ne trouve pas cette information dans les documents disponibles.");
-    assertThat(answer.sources()).isEmpty();
+    assertThat(events).noneMatch(e -> ChatEvents.SOURCES.equals(e.event()));
     verifyNoInteractions(chatModel);
   }
 
   @Test
   void relevantQuestionIsAnsweredWithRagPromptAndSources() { // AC5.2
-    when(chatModel.call(any(Prompt.class))).thenReturn(response("De 8h à 18h en semaine."));
+    givenModelStreams();
 
-    ChatAnswer answer = chatService.answer(IN_CORPUS);
+    List<ServerSentEvent<?>> events = ask(chatService, IN_CORPUS);
 
-    assertThat(answer.answer()).isEqualTo("De 8h à 18h en semaine.");
-    assertThat(answer.sources())
-        .isNotEmpty()
-        .allSatisfy(
-            source -> {
-              assertThat(source.fileName()).isEqualTo("sample.txt");
-              assertThat(source.excerpt()).hasSizeLessThanOrEqualTo(300);
-              assertThat(source.score())
-                  .isGreaterThanOrEqualTo(ragProperties.similarityThreshold());
-            });
+    assertThat(answerText(events)).isEqualTo("De 8h à 18h en semaine.");
 
     ArgumentCaptor<Prompt> prompt = ArgumentCaptor.forClass(Prompt.class);
-    verify(chatModel).call(prompt.capture());
+    verify(chatModel).stream(prompt.capture());
     assertThat(prompt.getValue().getSystemMessage().getText())
         .contains("en français")
         .contains("UNIQUEMENT les extraits")
@@ -117,17 +124,83 @@ class ChatIntegrationTest {
   @ParameterizedTest
   @CsvSource({"0.99, true", "0.1, false"})
   void thresholdDecidesBetweenRefusalAndAnswer(double threshold, boolean refused) { // AC8.2
-    when(chatModel.call(any(Prompt.class))).thenReturn(response("De 8h à 18h en semaine."));
+    givenModelStreams();
     ChatService service =
         new ChatService(
             new RetrievalService(vectorStore, withThreshold(threshold)),
             promptFactory,
             chatClientBuilder);
 
-    ChatAnswer answer = service.answer(IN_CORPUS);
+    List<ServerSentEvent<?>> events = ask(service, IN_CORPUS);
 
-    assertThat(answer.answer().equals(RagPromptFactory.REFUSAL)).isEqualTo(refused);
-    assertThat(answer.sources().isEmpty()).isEqualTo(refused);
+    assertThat(answerText(events).equals(RagPromptFactory.REFUSAL)).isEqualTo(refused);
+    assertThat(events.stream().noneMatch(e -> ChatEvents.SOURCES.equals(e.event())))
+        .isEqualTo(refused);
+  }
+
+  @Test
+  void httpStreamSendsTokensSourcesThenDone() throws Exception { // AC5.1, AC6.1
+    givenModelStreams();
+
+    MvcResult result = postChat(IN_CORPUS);
+
+    assertThat(result.getResponse().getContentType()).startsWith(MediaType.TEXT_EVENT_STREAM_VALUE);
+    List<SseEvent> events = SseTestSupport.parse(result.getResponse().getContentAsString());
+    assertThat(events)
+        .filteredOn(e -> e.name().equals(ChatEvents.TOKEN))
+        .hasSizeGreaterThanOrEqualTo(2);
+    assertThat(events).last().extracting(SseEvent::name).isEqualTo(ChatEvents.DONE);
+
+    SseEvent sources =
+        events.stream().filter(e -> e.name().equals(ChatEvents.SOURCES)).findFirst().orElseThrow();
+    JsonNode entries = objectMapper.readTree(sources.data());
+    assertThat(entries).isNotEmpty();
+    for (JsonNode entry : entries) {
+      assertThat(entry.get("fileName").asText()).isEqualTo("sample.txt");
+      assertThat(entry.get("excerpt").asText()).hasSizeLessThanOrEqualTo(300);
+      assertThat(entry.get("score").asDouble())
+          .isGreaterThanOrEqualTo(ragProperties.similarityThreshold());
+    }
+  }
+
+  @Test
+  void httpStreamHasNoSourcesWhenRefused() throws Exception { // AC6.1
+    MvcResult result = postChat(OUT_OF_CORPUS);
+
+    List<SseEvent> events = SseTestSupport.parse(result.getResponse().getContentAsString());
+    assertThat(events)
+        .extracting(SseEvent::name)
+        .containsExactly(ChatEvents.TOKEN, ChatEvents.DONE);
+    verifyNoInteractions(chatModel);
+  }
+
+  private MvcResult postChat(String question) throws Exception {
+    return SseTestSupport.perform(
+        mockMvc,
+        post("/api/chat")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
+            .contentType(MediaType.APPLICATION_JSON)
+            .accept(MediaType.TEXT_EVENT_STREAM)
+            .content(objectMapper.writeValueAsString(new ChatRequest(null, question))));
+  }
+
+  /** Le LLM « répond » en trois fragments, comme Ollama en streaming. */
+  private void givenModelStreams() {
+    when(chatModel.stream(any(Prompt.class)))
+        .thenReturn(Flux.just(response("De 8h "), response("à 18h "), response("en semaine.")));
+  }
+
+  private static List<ServerSentEvent<?>> ask(ChatService service, String question) {
+    return service.ask(new ChatRequest(null, question)).collectList().block();
+  }
+
+  /** Concatène les fragments des événements {@code token}. */
+  private static String answerText(List<ServerSentEvent<?>> events) {
+    StringBuilder text = new StringBuilder();
+    events.stream()
+        .filter(e -> ChatEvents.TOKEN.equals(e.event()))
+        .forEach(e -> text.append(((TokenEvent) e.data()).text()));
+    return text.toString();
   }
 
   private RagProperties withThreshold(double threshold) {

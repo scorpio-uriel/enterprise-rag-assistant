@@ -26,7 +26,7 @@ public class TestAiConfig {
   }
 
   /**
-   * Mock Mockito du LLM : chaque test programme lui-même {@code call(...)}. Le contexte Spring
+   * Mock Mockito du LLM : chaque test programme lui-même {@code stream(...)}. Le contexte Spring
    * étant partagé entre les classes de test, {@code MockReset.AFTER} efface stubs et interactions
    * après chaque test (la réponse par défaut, elle, est conservée).
    */

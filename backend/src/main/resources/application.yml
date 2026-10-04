@@ -41,7 +41,7 @@ management:
 
 security:
   jwt:
-    secret: ${JWT_SECRET} # >= 32 octets (HS256), jamais commité
+    secret: ${JWT_SECRET:super_secret_key_qui_fait_au_moins_trente_deux_caracteres_pour_le_dev} # >= 32 octets (HS256), jamais commité
     ttl: ${JWT_TTL:1h}
   seed:
     admin-password: ${ADMIN_PASSWORD}
