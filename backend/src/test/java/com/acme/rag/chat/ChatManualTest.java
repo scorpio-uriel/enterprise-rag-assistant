@@ -58,7 +58,9 @@ class ChatManualTest {
 
     List<ServerSentEvent<?>> events =
         chatService
-            .ask(new ChatRequest(null, "Quels sont les horaires du support informatique ?"))
+            .ask(
+                new ChatRequest(null, "Quels sont les horaires du support informatique ?"),
+                "user@acme.local")
             .collectList()
             .block();
 

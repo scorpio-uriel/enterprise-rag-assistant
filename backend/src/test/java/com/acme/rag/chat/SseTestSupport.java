@@ -14,14 +14,14 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
  * {@code asyncDispatch} rejoue ensuite le dispatch {@code ASYNC} (filtres de sécurité compris) une
  * fois le flux terminé.
  */
-final class SseTestSupport {
+public final class SseTestSupport {
 
   /** Un événement SSE : {@code event:<name>} puis {@code data:<data>} (JSON). */
-  record SseEvent(String name, String data) {}
+  public record SseEvent(String name, String data) {}
 
   private SseTestSupport() {}
 
-  static MvcResult perform(MockMvc mockMvc, MockHttpServletRequestBuilder request)
+  public static MvcResult perform(MockMvc mockMvc, MockHttpServletRequestBuilder request)
       throws Exception {
     MvcResult started =
         mockMvc
@@ -32,7 +32,7 @@ final class SseTestSupport {
   }
 
   /** Les événements sont séparés par une ligne vide ; chaque ligne est {@code champ:valeur}. */
-  static List<SseEvent> parse(String body) {
+  public static List<SseEvent> parse(String body) {
     List<SseEvent> events = new ArrayList<>();
     for (String block : body.split("\n\n")) {
       String name = null;
